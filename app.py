@@ -1,19 +1,31 @@
 from flask import Flask, render_template, request
-import pandas as pd
 import os
 import re
+import pandas as pd
 from PyPDF2 import PdfReader
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__)
 
-if not os.path.exists("uploads"):
-    os.makedirs("uploads")
-
-app.config["UPLOAD_FOLDER"] = "uploads"
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 data = pd.read_csv("jobs.csv")
+
+
+def extract_raw_text(file_path):
+    text = ""
+
+    reader = PdfReader(file_path)
+
+    for page in reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text + "\n"
+
+    return text
 
 
 def clean_text(text):
@@ -23,88 +35,83 @@ def clean_text(text):
     return text.strip()
 
 
-def extract_raw_text(file_path):
-    reader = PdfReader(file_path)
-    text = ""
+def extract_only_skills(raw_text):
+    text = raw_text.replace("\r", "\n")
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
 
-    for page in reader.pages:
-        content = page.extract_text()
-        if content:
-            text += content + "\n"
-
-    return text
-
-
-def get_skill_bank():
-    skill_bank = set()
-
-    for row in data["skills"]:
-        skills = str(row).split(",")
-
-        for skill in skills:
-            skill = skill.strip().lower()
-
-            if len(skill) > 2:
-                skill_bank.add(skill)
-
-    return skill_bank
-
-
-def get_detected_skills(raw_text):
-    text = raw_text.lower()
-    detected = []
-
-    skill_bank = get_skill_bank()
-
-    # First try to find skills section only
-    section_match = re.search(
-        r"(technical skills|key skills|skills)(.*?)(languages|education|experience|projects|certifications|objective|course)",
-        text,
-        re.DOTALL
+    skill_heading_pattern = re.compile(
+        r"^(skills|technical skills|key skills|core skills|professional skills|computer skills|it skills|tools|technologies)\s*:?\s*(.*)$",
+        re.IGNORECASE
     )
 
-    if section_match:
-        section = section_match.group(2)
+    stop_heading_pattern = re.compile(
+        r"^(summary|profile|objective|career objective|education|qualification|academic|experience|work experience|employment|projects|project|certifications|certificate|achievements|languages|hobbies|personal details|declaration|contact|address|role)\s*:?",
+        re.IGNORECASE
+    )
 
-        # remove bracket details like (basic, loops, functions...)
-        section = re.sub(r"\(.*?\)", "", section)
+    skills_text = ""
 
-        # make separators clean
-        section = section.replace("•", ",")
-        section = section.replace("·", ",")
-        section = section.replace("\n", ",")
-        section = section.replace(".", "")
-        section = re.sub(r"\betc\b", "", section)
-        section = re.sub(r"\be\s*t\s*c\b", "", section)
+    for i, line in enumerate(lines):
+        match = skill_heading_pattern.match(line)
 
-        parts = section.split(",")
+        if match:
+            # same line me skills ho to lo
+            same_line_skills = match.group(2).strip()
+            if same_line_skills:
+                skills_text += same_line_skills + " "
 
-        for part in parts:
-            skill = part.strip().lower()
-            skill = re.sub(r"[^a-zA-Z0-9+#. ]", " ", skill)
-            skill = re.sub(r"\s+", " ", skill).strip()
+            # next lines lo jab tak next section heading na aa jaye
+            for next_line in lines[i + 1:]:
+                if stop_heading_pattern.match(next_line):
+                    break
 
-            if len(skill) <= 2:
-                continue
+                skills_text += next_line + " "
 
-            # avoid theory lines
-            if len(skill.split()) > 4:
-                continue
+            break
 
-            if skill not in detected:
-                detected.append(skill)
+    if not skills_text.strip():
+        return []
 
-    # If skills section is not clean/found, detect only known job skills from jobs.csv
-    if not detected:
-        clean_resume = clean_text(raw_text)
+    # brackets ke andar explanation remove
+    skills_text = re.sub(r"\(.*?\)", "", skills_text)
+    skills_text = re.sub(r"\[.*?\]", "", skills_text)
 
-        for skill in sorted(skill_bank):
-            pattern = r"\b" + re.escape(skill) + r"\b"
+    # separators normalize
+    for sep in ["•", "●", "▪", "·", "|", "/", ";", "\n", "\t"]:
+        skills_text = skills_text.replace(sep, ",")
 
-            if re.search(pattern, clean_resume):
-                detected.append(skill)
+    # agar bullet nahi hai aur comma bhi nahi hai, multiple spaces ko comma mat banao
+    raw_skills = skills_text.split(",")
 
-    return detected
+    final_skills = []
+
+    for skill in raw_skills:
+        skill = skill.strip()
+
+        skill = re.sub(r"^[\-–—]+", "", skill)
+        skill = re.sub(r"[^a-zA-Z0-9+#. ]", "", skill)
+        skill = re.sub(r"\s+", " ", skill).strip()
+
+        if not skill:
+            continue
+
+        # long sentence remove
+        if len(skill.split()) > 5:
+            continue
+
+        # garbage words remove
+        if skill.lower() in [
+            "skills", "technical skills", "key skills", "tools",
+            "technologies", "etc", "and", "or"
+        ]:
+            continue
+
+        skill = skill.title()
+
+        if skill not in final_skills:
+            final_skills.append(skill)
+
+    return final_skills
 
 
 def smart_match(resume_text):
@@ -116,15 +123,9 @@ def smart_match(resume_text):
     vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform(corpus)
 
-    resume_vector = tfidf_matrix[0]
-    job_vectors = tfidf_matrix[1:]
-
-    scores = cosine_similarity(resume_vector, job_vectors)[0]
+    scores = cosine_similarity(tfidf_matrix[0], tfidf_matrix[1:])[0]
 
     for i, score in enumerate(scores):
-        job_title = data.iloc[i]["job_title"]
-        salary = data.iloc[i]["salary"]
-
         job_skills = [
             skill.strip().lower()
             for skill in str(data.iloc[i]["skills"]).split(",")
@@ -141,26 +142,18 @@ def smart_match(resume_text):
             else:
                 missing_skills.append(skill)
 
-        match_score = len(matched_skills)
-        total = len(job_skills)
-
-        summary = "This job role requires relevant technical knowledge, problem-solving skills, and practical experience."
-
-        if "summary" in data.columns:
-            summary = data.iloc[i]["summary"]
-
-        if score > 0 or match_score > 0:
+        if score > 0 or matched_skills:
             results.append({
-                "title": job_title,
-                "salary": salary,
-                "match": match_score,
-                "total": total,
+                "title": data.iloc[i]["job_title"],
+                "salary": data.iloc[i]["salary"],
+                "match": len(matched_skills),
+                "total": len(job_skills),
                 "matched_skills": matched_skills,
                 "missing_skills": missing_skills,
-                "summary": summary
+                "summary": data.iloc[i]["summary"] if "summary" in data.columns else ""
             })
 
-    results = sorted(results, key=lambda x: (x["match"], x["salary"]), reverse=True)
+    results = sorted(results, key=lambda x: x["match"], reverse=True)
 
     return results[:5]
 
@@ -176,20 +169,20 @@ def home():
         raw_text = extract_raw_text(file_path)
         resume_text = clean_text(raw_text)
 
-        skills = get_detected_skills(raw_text)
+        skills = extract_only_skills(raw_text)
         results = smart_match(resume_text)
 
         best_job = results[0] if results else None
 
         return render_template(
             "result.html",
+            skills=skills,
             results=results,
-            best_job=best_job,
-            skills=skills
+            best_job=best_job
         )
 
     return render_template("index.html")
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=10000, debug=True)
