@@ -20,7 +20,7 @@ def clean_text(text):
     text = text.lower()
     text = re.sub(r"[^a-zA-Z0-9+#. ]", " ", text)
     text = re.sub(r"\s+", " ", text)
-    return text
+    return text.strip()
 
 
 def extract_raw_text(file_path):
@@ -35,70 +35,76 @@ def extract_raw_text(file_path):
     return text
 
 
-def extract_clean_text(file_path):
-    raw_text = extract_raw_text(file_path)
-    return clean_text(raw_text)
+def get_skill_bank():
+    skill_bank = set()
+
+    for row in data["skills"]:
+        skills = str(row).split(",")
+
+        for skill in skills:
+            skill = skill.strip().lower()
+
+            if len(skill) > 2:
+                skill_bank.add(skill)
+
+    return skill_bank
 
 
 def get_detected_skills(raw_text):
     text = raw_text.lower()
-    skills = []
+    detected = []
 
-    # skills section find karo
-    match = re.search(
-        r"(technical skills|skills|key skills)(.*?)(languages|education|experience|projects|certifications|course)",
+    skill_bank = get_skill_bank()
+
+    # First try to find skills section only
+    section_match = re.search(
+        r"(technical skills|key skills|skills)(.*?)(languages|education|experience|projects|certifications|objective|course)",
         text,
         re.DOTALL
     )
 
-    if match:
-        section = match.group(2)
-    else:
-        section = text
+    if section_match:
+        section = section_match.group(2)
 
-    # bracket details remove karo
-    section = re.sub(r"\(.*?\)", "", section)
+        # remove bracket details like (basic, loops, functions...)
+        section = re.sub(r"\(.*?\)", "", section)
 
-    # bullets ko comma bana do
-    section = section.replace("•", ",")
-    section = section.replace("·", ",")
-    section = section.replace("\n", ",")
+        # make separators clean
+        section = section.replace("•", ",")
+        section = section.replace("·", ",")
+        section = section.replace("\n", ",")
+        section = section.replace(".", "")
+        section = re.sub(r"\betc\b", "", section)
+        section = re.sub(r"\be\s*t\s*c\b", "", section)
 
-    # dots / etc remove karo
-    section = section.replace(".", "")
-    section = re.sub(r"\be\s*t\s*c\b", "", section)
-    section = re.sub(r"\betc\b", "", section)
+        parts = section.split(",")
 
-    parts = section.split(",")
+        for part in parts:
+            skill = part.strip().lower()
+            skill = re.sub(r"[^a-zA-Z0-9+#. ]", " ", skill)
+            skill = re.sub(r"\s+", " ", skill).strip()
 
-    for part in parts:
-        skill = part.strip()
+            if len(skill) <= 2:
+                continue
 
-        skill = re.sub(r"[^a-zA-Z0-9#+. ]", " ", skill)
-        skill = re.sub(r"\s+", " ", skill).strip()
+            # avoid theory lines
+            if len(skill.split()) > 4:
+                continue
 
-        if len(skill) <= 2:
-            continue
+            if skill not in detected:
+                detected.append(skill)
 
-        # useless lines ignore
-        ignore_words = [
-            "technical skills", "skills", "key skills",
-            "languages", "education", "experience",
-            "objective", "additional information"
-        ]
+    # If skills section is not clean/found, detect only known job skills from jobs.csv
+    if not detected:
+        clean_resume = clean_text(raw_text)
 
-        if skill in ignore_words:
-            continue
+        for skill in sorted(skill_bank):
+            pattern = r"\b" + re.escape(skill) + r"\b"
 
-        skills.append(skill)
+            if re.search(pattern, clean_resume):
+                detected.append(skill)
 
-    # duplicate remove, order same rakho
-    final_skills = []
-    for skill in skills:
-        if skill not in final_skills:
-            final_skills.append(skill)
-
-    return final_skills
+    return detected
 
 
 def smart_match(resume_text):
@@ -139,6 +145,7 @@ def smart_match(resume_text):
         total = len(job_skills)
 
         summary = "This job role requires relevant technical knowledge, problem-solving skills, and practical experience."
+
         if "summary" in data.columns:
             summary = data.iloc[i]["summary"]
 
@@ -154,6 +161,7 @@ def smart_match(resume_text):
             })
 
     results = sorted(results, key=lambda x: (x["match"], x["salary"]), reverse=True)
+
     return results[:5]
 
 
