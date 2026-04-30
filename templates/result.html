@@ -2,7 +2,6 @@
 <html>
 <head>
     <title>Results</title>
-
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
@@ -25,14 +24,6 @@
         .job-card:hover {
             transform: scale(1.02);
             box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-        }
-
-        .skill-badge {
-            background: #6366f1;
-            margin: 5px;
-            padding: 5px 10px;
-            border-radius: 20px;
-            display: inline-block;
         }
 
         .top-bar {
@@ -72,15 +63,16 @@
         <h2>📊 Analysis Result</h2>
         <a href="/" class="btn btn-light btn-sm">Go Back</a>
     </div>
-<h4>🧠 Detected Skills</h4>
 
-<p>
-    {% if skills %}
-        {{ skills | join(', ') }}
-    {% else %}
-        No skills detected
-    {% endif %}
-</p>
+    <h4>🧠 Detected Skills</h4>
+
+    <p>
+        {% if skills %}
+            {{ skills | join(', ') }}
+        {% else %}
+            No skills detected
+        {% endif %}
+    </p>
 
     {% if best_job %}
         <div class="job-card">
@@ -93,6 +85,7 @@
 
     {% if results %}
         {% for job in results %}
+
             <div class="job-card" onclick="toggleSummary('summary{{ loop.index }}')">
 
                 <h5>{{ job.title }}</h5>
@@ -104,7 +97,7 @@
                 <p class="matched">
                     ✔ Matched Skills:
                     {% if job.matched_skills %}
-                        {{ job.matched_skills|join(', ') }}
+                        {{ job.matched_skills | join(', ') }}
                     {% else %}
                         None
                     {% endif %}
@@ -113,7 +106,7 @@
                 <p class="missing">
                     ✘ Missing Skills:
                     {% if job.missing_skills %}
-                        {{ job.missing_skills|join(', ') }}
+                        {{ job.missing_skills | join(', ') }}
                     {% else %}
                         None
                     {% endif %}
@@ -122,69 +115,15 @@
                 <div class="summary-box" id="summary{{ loop.index }}">
                     <h6>Job Role Summary</h6>
 
-                    {% if "Data Analyst" in job.title %}
-                        <p>
-                            A Data Analyst collects, cleans, and analyzes data to help organizations make better decisions.
-                            This role commonly uses Excel, SQL, Python, Pandas, Power BI, and data visualization tools.
-                        </p>
-
-                    {% elif "Software Engineer" in job.title %}
-                        <p>
-                            A Software Engineer designs, develops, tests, and maintains software applications.
-                            This role requires programming knowledge, problem-solving skills, and understanding of software development.
-                        </p>
-
-                    {% elif "Web Developer" in job.title %}
-                        <p>
-                            A Web Developer creates and maintains websites or web applications.
-                            This role commonly requires HTML, CSS, JavaScript, frontend design, and backend integration.
-                        </p>
-
-                    {% elif "Cyber Security Analyst" in job.title %}
-                        <p>
-                            A Cyber Security Analyst protects systems and networks from cyber threats.
-                            This role involves monitoring security risks, analyzing vulnerabilities, and implementing protection methods.
-                        </p>
-
-                    {% elif "Cloud Engineer" in job.title %}
-                        <p>
-                            A Cloud Engineer manages cloud infrastructure and services.
-                            This role commonly uses AWS, Azure, GCP, Docker, Linux, and deployment tools.
-                        </p>
-
-                    {% elif "Database Admin" in job.title %}
-                        <p>
-                            A Database Administrator manages databases, ensures data security, performs backups, and improves database performance.
-                            This role requires SQL, database design, and server management knowledge.
-                        </p>
-
-                    {% elif "Backend Developer" in job.title %}
-                        <p>
-                            A Backend Developer works on server-side logic, APIs, databases, and application performance.
-                            This role commonly uses Python, Java, Node.js, SQL, and API development.
-                        </p>
-
-                    {% elif "Frontend Developer" in job.title %}
-                        <p>
-                            A Frontend Developer builds the visible part of websites and applications.
-                            This role focuses on HTML, CSS, JavaScript, React, and responsive design.
-                        </p>
-
-                    {% elif "Full Stack Developer" in job.title %}
-                        <p>
-                            A Full Stack Developer works on both frontend and backend parts of an application.
-                            This role requires knowledge of UI design, server-side programming, databases, and APIs.
-                        </p>
-
+                    {% if job.summary %}
+                        <p>{{ job.summary }}</p>
                     {% else %}
-                        <p>
-                            This job role requires technical skills, problem-solving ability, and practical knowledge related to the mentioned job skills.
-                            The candidate should improve missing skills to increase suitability for this role.
-                        </p>
+                        <p>No summary available for this job role.</p>
                     {% endif %}
                 </div>
 
             </div>
+
         {% endfor %}
     {% else %}
         <p>No jobs found</p>
