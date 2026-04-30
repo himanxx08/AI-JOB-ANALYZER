@@ -126,9 +126,13 @@ def smart_match(resume_text):
     scores = cosine_similarity(tfidf_matrix[0], tfidf_matrix[1:])[0]
 
     for i, score in enumerate(scores):
+        job_title = data.iloc[i]["job_title"]
+        salary = data.iloc[i]["salary"]
+
         job_skills = [
             skill.strip().lower()
             for skill in str(data.iloc[i]["skills"]).split(",")
+            if skill.strip()
         ]
 
         matched_skills = []
@@ -143,20 +147,32 @@ def smart_match(resume_text):
                 missing_skills.append(skill)
 
         if score > 0 or matched_skills:
+            summary_value = ""
+
+            if "summary" in data.columns and pd.notna(data.iloc[i]["summary"]):
+                summary_value = str(data.iloc[i]["summary"]).strip()
+
+            if not summary_value or summary_value.lower() == "nan":
+                summary_value = (
+                    f"{job_title} role requires skills such as "
+                    f"{', '.join(job_skills)}. "
+                    f"This role is recommended based on the matched skills from the uploaded resume. "
+                    f"The candidate should improve missing skills to increase suitability for this job role."
+                )
+
             results.append({
-                "title": data.iloc[i]["job_title"],
-                "salary": data.iloc[i]["salary"],
+                "title": job_title,
+                "salary": salary,
                 "match": len(matched_skills),
                 "total": len(job_skills),
                 "matched_skills": matched_skills,
                 "missing_skills": missing_skills,
-                "summary": data.iloc[i]["summary"] if "summary" in data.columns else ""
+                "summary": summary_value
             })
 
     results = sorted(results, key=lambda x: x["match"], reverse=True)
 
     return results[:5]
-
 
 @app.route("/", methods=["GET", "POST"])
 def home():
